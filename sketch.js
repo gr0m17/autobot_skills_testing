@@ -5,7 +5,7 @@ let shipPriority = "Closest";
 // let ship;
 let uniqueDeletionList;
 let allTargets = [];
-let numberOfTargets = 500;
+let numberOfTargets = 400;
 let armySize = 5;
 let path;
 let follow = undefined;
@@ -70,11 +70,17 @@ function setup() {
   generateTargets();
 }
 function generateTargets() {
+  let offset = 100;
   while (targets.length < numberOfTargets) {
-    targets.push(new Target(random(width), random(height)));
+    targets.push(
+      new Target(
+        random(offset, width - offset),
+        random(offset, height - offset)
+      )
+    );
   }
   //make 20 high value targets
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 1; i++) {
     let target = new Target(random(width), random(height));
     target.value = 100;
     targets.push(target);

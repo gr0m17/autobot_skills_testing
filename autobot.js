@@ -153,15 +153,21 @@ class Drone {
 
         bufferCollector = [...bufferCollector, ...ship.sensors[i].buffer];
         //filter the bufferCollector to remove any targets with a distnance greater than the sensor's range
-        for (let target in bufferCollector) {
-          if (
-            dist(ship.pos.x, ship.pos.y, target.x, target.y) >
-            ship.sensors[i].range
-          ) {
-            bufferCollector.splice(target, 1);
+        // console.log(bufferCollector);
+        for (let j = 0; j < bufferCollector.length; j++) {
+          if (bufferCollector[j].pos && ship.pos) {
+            if (
+              dist(
+                ship.pos.x,
+                ship.pos.y,
+                bufferCollector[j].pos.x,
+                bufferCollector[j].pos.y
+              ) > ship.sensors[i].range
+            ) {
+              bufferCollector.splice(j, 1);
+            }
           }
-        }
-        console.log(bufferCollector);
+        } // console.log(bufferCollector);
       }
     }
     if (bufferCollector.length > 0) {

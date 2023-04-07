@@ -41,13 +41,6 @@ class Sensor {
   scan(targetlist) {
     this.targets = [];
 
-    if (frameCount % this.frequency == 0) {
-      //DRAW A CIRCLE AROUND THE SENSOR
-      push();
-      fill(255, 0, 0, 100);
-      circle(this.vehicle.pos.x, this.vehicle.pos.y, this.range * 2);
-      pop();
-    }
     //check the distance between this.vehicle and each target in targetlist
     if (targetlist !== undefined) {
       for (let i = 0; i < targetlist.length; i++) {
@@ -66,18 +59,23 @@ class Sensor {
     return this.targets;
   }
   show() {
-    // for (let i = 0; i < this.targets.length; i++) {
-    //   push();
-    //   //if this.targets[i] is a Target, fill it with red
-    //   if (this.targets[i] instanceof Target && this.targetFiltering) {
-    //     fill(255, 255, 0, 100);
-    //   } else {
-    //     fill(255, 0, 0, 100);
-    //   }
-    //   circle(this.targets[i].pos.x, this.targets[i].pos.y, 100);
-    //   pop();
-    this.radarBufferPulse();
-    // }
+    if (frameCount % this.frequency == 0) {
+      //DRAW A CIRCLE AROUND THE SENSOR
+      if (this.vehicle.status == "docked") {
+        console.log(this.vehicle);
+        translate(
+          this.vehicle.dockingStation.pos.x,
+          this.vehicle.dockingStation.pos.y
+        );
+        rotate(this.vehicle.dockingStation.angle);
+        translate(
+          this.vehicle.dockingStation.ports[this.vehicle.dockingPort].pos.x,
+          this.vehicle.dockingStation.ports[this.vehicle.dockingPort].pos.y
+        );
+        fill(this.vehicle.sensorColor, 100);
+        circle(this.vehicle.pos.x, this.vehicle.pos.y, this.range * 2);
+      }
+    }
   }
   radarBufferPulse() {
     for (let target of this.buffer) {
@@ -92,6 +90,33 @@ class Radar extends Sensor {
     this.scanAngle = random(-PI, PI);
     this.scanAngleIncrement = scanSpeed;
     this.bufferDuration = 1000;
+  }
+  show() {
+    push();
+    stroke(this.vehicle.sensorColor);
+    strokeWeight(1);
+    this.radarBufferPulse();
+    //stroke thickness = 4
+
+    line(
+      this.vehicle.pos.x,
+      this.vehicle.pos.y,
+      this.vehicle.pos.x +
+        this.range * cos(this.scanAngle - this.scanWidthInRadians),
+      this.vehicle.pos.y +
+        this.range * sin(this.scanAngle - this.scanWidthInRadians)
+    );
+    line(
+      this.vehicle.pos.x,
+      this.vehicle.pos.y,
+      this.vehicle.pos.x +
+        this.range * cos(this.scanAngle + this.scanWidthInRadians),
+
+      this.vehicle.pos.y +
+        this.range * sin(this.scanAngle + this.scanWidthInRadians)
+    );
+
+    pop();
   }
   scan(targetlist) {
     if (targetlist === undefined) {
@@ -115,28 +140,7 @@ class Radar extends Sensor {
     let scanAngleDegrees = (this.scanAngle * 180) / PI;
 
     //draw a line representing the scan angle - 5 degrees on each side
-    push();
-    stroke(0, 255, 0, 200);
-    //stroke thickness = 4
-    strokeWeight(4);
-    line(
-      this.vehicle.pos.x,
-      this.vehicle.pos.y,
-      this.vehicle.pos.x +
-        this.range * cos(this.scanAngle - this.scanWidthInRadians),
-      this.vehicle.pos.y +
-        this.range * sin(this.scanAngle - this.scanWidthInRadians)
-    );
-    line(
-      this.vehicle.pos.x,
-      this.vehicle.pos.y,
-      this.vehicle.pos.x +
-        this.range * cos(this.scanAngle + this.scanWidthInRadians),
 
-      this.vehicle.pos.y +
-        this.range * sin(this.scanAngle + this.scanWidthInRadians)
-    );
-    pop();
     //
     //
     //

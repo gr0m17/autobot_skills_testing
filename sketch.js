@@ -1,72 +1,48 @@
-let probes = [];
-let autobots = [];
-let targets = [];
-let shipPriority = "Closest";
-// let ship;
-let uniqueDeletionList;
-let allTargets = [];
-let numberOfTargets = 400;
-let armySize = 5;
+let probes = []; //array to hold all the probes
+let autobots = []; //array to hold all the autobots (everything)
+let targets = []; //array to hold all the targets
+let shipPriority = "Closest"; //or "Highest Value"
+let stations = []; //array to hold all the stations
+// let allTargets = [];
+let numberOfTargets = 100;
+let armySize = 24;
 let path;
+let patrolPath;
 let follow = undefined;
 let deletionList = [];
 
 function setup() {
-  //make a p5 button
-  createCanvas(1000, 700);
-  let button = createButton("toggle patrol / wander");
-  button.mousePressed(togglePath);
-  button.position(width - 200, height - 60);
+  //create canvas 20 pixels smaller than the window
+  createCanvas(windowWidth - 20, windowHeight - 20);
+  // createCanvas();
 
-  //create button to toggle priority
-  let button2 = createButton("toggle priority");
-  button2.mousePressed(togglePriority);
-  button2.position(width - 300, height - 30);
-
-  //make a p5 slider to adjust path.radius
-  let slider = createSlider(10, 200, 20);
-  slider.position(width - 180, height - 25);
-  slider.style("width", "100px");
-  slider.input(changeRadius);
-  //slider label
-  let label = createP("set patrol radius");
-  label.position(width - 180, height - 55);
-
-  function changeRadius() {
-    path.radius = slider.value();
-  }
-  function togglePath() {
-    if (path) {
-      path = undefined;
-    } else {
-      newPath();
-    }
-  }
-  function togglePriority() {
-    if (shipPriority === "Most Valuable") {
-      shipPriority = "Closest";
-    } else {
-      shipPriority = "Most Valuable";
-    }
+  //make the stations, if they are here
+  stations.push(new Station(width / 2, height / 4));
+  for (station of stations) {
+    station.angle = random(-3.14, 3.14);
   }
 
   for (let i = 0; i < armySize; i++) {
-    autobots.push(new Drone(random(width), random(height)));
-  }
-  for (let i = 0; i < autobots.length; i++) {
-    autobots[i].addRadar(75, 2, 0.5);
-    autobots[i].addRadar(250, 1, 0.005);
-    // autobots[i].addRadar(300, 1, 1);
-    // autobots[i].addPing(
-    //   (range = 50),
-    //   (frequency = 10),
-    //   (scanWidthInDegrees = 30),
-    //   (debug = false),
-    //   (targetFiltering = true)
-    // );
+    // spawn the drones
+    //if there is a station, spawn the drones around it
+    if (stations.length > 0) {
+      let station = stations[0];
+      let angle = random(-3.14, 3.14);
+      let x = station.pos.x + cos(angle) * station.r * 2;
+      let y = station.pos.y + sin(angle) * station.r * 2;
+      autobots.push(new Drone(x, y));
+    } else {
+      autobots.push(new Drone(random(width), random(height)));
+    }
+
+    // add sensors to the drones
+    autobots[i].addRadar(75, 0.1, 0.5);
+    autobots[i].addRadar(250, 1, 0.0055);
+    //
   }
 
-  // newPath();
+  // path = newPath();
+  path = parkingPattern(stations[0]);
   generateTargets();
 }
 function generateTargets() {
@@ -79,187 +55,146 @@ function generateTargets() {
       )
     );
   }
-  //make 20 high value targets
-  for (let i = 0; i < 1; i++) {
-    let target = new Target(random(width), random(height));
-    target.value = 100;
-    targets.push(target);
-  }
+  // //make 20 high value targets
+  // for (let i = 0; i < 1; i++) {
+  //   let target = new Target(random(width), random(height));
+  //   target.value = 100;
+  //   targets.push(target);
+  // }
 }
 function draw() {
   if (targets.length < 1) {
     generateTargets();
   }
-  //
-  //
-  //
-  //
-  //
-
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
-  //
 
   background(220);
+  for (station of stations) {
+    //if any targets are within the radius of the station, slice them out of the targets array
+    // for (let i = 0; i < targets.length; i++) {
+    //   if (
+    //     dist(station.pos.x, station.pos.y, targets[i].pos.x, targets[i].pos.y) <
+    //     station.r * 4
+    //   ) {
+    //     targets.splice(i, 1);
+    //     targets.push(new Target(random(width), random(height)));
+    //   }
+    // }
 
+    station.show();
+    //if there are any stations within r * 6 of each other, move them away from each other
+    for (let i = 0; i < stations.length; i++) {
+      for (let j = 0; j < stations.length; j++) {
+        if (i !== j) {
+          if (
+            dist(
+              stations[i].pos.x,
+              stations[i].pos.y,
+              stations[j].pos.x,
+              stations[j].pos.y
+            ) <
+            stations[i].r * 6
+          ) {
+            stations[i].flee(stations[j]);
+          }
+        }
+      }
+    }
+    station.edgesBounce();
+    station.update();
+  } //station management
   for (probe of probes) {
     probe.probeManagment(targets, autobots);
   }
   for (autobot of autobots) {
-    autobot.droneManagement(targets, autobots);
+    autobot.droneManagement(targets, [...autobots, ...stations]);
   }
   for (target of targets) {
     target.show();
+    target.update();
+    // enables targets to move
   }
-  //target deletion management
-  //for each autobot check if it is within the radius of a target
 
-  //if an autobot is within r*2 of a target, add it to the deletionList
-  function bufferManagement() {
-    for (let i = 0; i < autobots.length; i++) {
-      for (let j = 0; j < targets.length; j++) {
+  //roof of the station
+  for (station of stations) {
+    station.showTop();
+  }
+  //if you click a station with the mouse, you can draw it around
+  if (mouseIsPressed) {
+    let stationSelected = false;
+    for (station of stations) {
+      if (stationSelected == false) {
         if (
-          dist(
-            autobots[i].pos.x,
-            autobots[i].pos.y,
-            targets[j].pos.x,
-            targets[j].pos.y
-          ) <=
-          autobots[i].r * 2
+          dist(station.pos.x, station.pos.y, mouseX, mouseY) <
+          station.r * 2
         ) {
-          let killvalue = floor(targets[j].value);
-          deletionList.push(targets[j].name);
-          autobots[i].kills += killvalue;
+          station.pos.x = mouseX;
+          station.pos.y = mouseY;
+          stationSelected = true;
+          path = parkingPattern(stations[0]);
         }
-      }
-    }
-    // console.log("deletion list:", deletionList);
-    //remove duplicates from deletionList
-    uniqueDeletionList = [];
-    for (let i = 0; i < deletionList.length; i++) {
-      if (!uniqueDeletionList.includes(deletionList[i])) {
-        uniqueDeletionList.push(deletionList[i]);
-      }
-      deletionList = [];
-    }
-    // console.log(uniqueDeletionList);
-    //check all the sensor buffers for targets with the names in uniqueDeletionList
-    for (let i = 0; i < autobots.length; i++) {
-      for (let j = 0; j < autobots[i].sensors.length; j++) {
-        for (let k = 0; k < autobots[i].sensors[j].buffer.length; k++) {
-          if (
-            uniqueDeletionList.includes(autobots[i].sensors[j].buffer[k].name)
-          ) {
-            autobots[i].sensors[j].buffer.splice(k, 1);
-          }
-          if (!targets.includes(autobots[i].sensors[j].buffer[k])) {
-            autobots[i].sensors[j].buffer.splice(k, 1);
-          }
-        }
-      }
-    }
-    // console.log("scan for targets in probes");
-    for (let i = 0; i < probes.length; i++) {
-      for (let j = 0; j < probes[i].sensors.length; j++) {
-        for (let k = 0; k < probes[i].sensors[j].buffer.length; k++) {
-          if (
-            uniqueDeletionList.includes(probes[i].sensors[j].buffer[k].name)
-          ) {
-            probes[i].sensors[j].buffer.splice(k, 1);
-          }
-          // if (!targets.includes(probes[i].sensors[j].buffer[k])) {
-          //   probes[i].sensors[j].buffer.splice(k, 1);
-          // }
-          // if (probes[i].sensors[j].buffer[k]?.timeOut < 0) {
-          //   probes[i].sensors[j].buffer.splice(k, 1);
-          // }
-        }
-      }
-    }
-    //remove targets from the targets array whose name is in uniqueDeletionList
-    for (let j = 0; j < targets.length; j++) {
-      if (uniqueDeletionList.includes(targets[j].name)) {
-        targets.splice(j, 1);
       }
     }
   }
-  bufferManagement();
 
+  bufferManagement(autobots, targets);
+  // drawInterface();
   //draw a rectangle across the bottom of the screen to show
-  fill(200, 200, 200, 200);
-  rect(0, 690 - autobots.length * 12, width, height);
-  textSize(12);
-  fill(0, 0, 0, 255);
-
-  for (let i = 0; i < autobots.length; i++) {
-    strokeWeight(0);
-    stroke(0, 0, 0, 255);
+  function drawInterface() {
+    fill(200, 200, 200, 100);
+    rect(0, height - autobots.length * 12 - 20, width, height);
+    textSize(12);
     fill(0, 0, 0, 255);
-    text(autobots[i].name + ": " + autobots[i].kills, 10, 645 + i * 12);
-    text(autobots[i].status, 100, 645 + i * 12);
-    let currentText = "current target:" + autobots[i].currentTarget;
-    let currentValue = ", value:" + autobots[i].currentTargetValue.toFixed(3);
-    if (autobots[i].currentTarget == "No Target") {
-      currentValue = "";
-    }
 
-    strokeWeight(0);
-    text("Ship Priority: \n" + shipPriority, width - 290, height - 50);
-    //find the targets index in the targets array
-    let targetIndex = targets.findIndex(function (target) {
-      return target.name == autobots[i].currentTarget;
-    });
-    //draw a sqauare around the current target
-    if (autobots[i].currentTarget != "No Target") {
-      strokeWeight(1);
-      stroke(255, 0, 0, 128);
-      fill(255, 0, 0, 100);
-      if (targets[targetIndex]?.pos) {
-        rect(
-          targets[targetIndex].pos.x - targets[targetIndex].r,
-          targets[targetIndex].pos.y - targets[targetIndex].r,
-          targets[targetIndex].r * 2,
-          targets[targetIndex].r * 2
-        );
-        // draw a line from the current target to the current autobot
-        // stroke(0, 0, 0, 255);
-        // line(
-        //   autobots[i].pos.x,
-        //   autobots[i].pos.y,
-        //   targets[targetIndex].pos.x,
-        //   targets[targetIndex].pos.y
-        // );
+    for (let i = 0; i < autobots.length; i++) {
+      strokeWeight(0);
+      stroke(0, 0, 0, 255);
+      fill(0, 0, 0, 255);
+      text(
+        autobots[i].name + ": " + autobots[i].minedValue.toFixed(2),
+        10,
+        height - i * 12 - 10
+      );
+      text(autobots[i].status, 100, height - i * 12 - 10);
+      let currentText = "current target:" + autobots[i].currentTarget;
+      let currentValue = ", value:" + autobots[i].currentTargetValue.toFixed(3);
+      if (autobots[i].currentTarget == "No Target") {
+        currentValue = "";
       }
-    }
 
-    text(currentText + currentValue, 250, 645 + i * 12);
+      strokeWeight(0);
+      // text("Ship Priority: \n" + shipPriority, width - 290, height - 50);
+      //find the targets index in the targets array
+      let targetIndex = targets.findIndex(function (target) {
+        return target.name == autobots[i].currentTarget;
+      });
+      //draw a sqauare around the current target
+      if (autobots[i].currentTarget != "No Target") {
+        strokeWeight(1);
+        stroke(255, 0, 0, 128);
+        fill(255, 0, 0, 100);
+        if (targets[targetIndex]?.pos) {
+        }
+      }
+
+      text(currentText + currentValue, 250, height - i * 12 - 10);
+      //text with autobots[i].dockingStatus
+      text(autobots[i].dockingStatus, 500, height - i * 12 - 10);
+      //show station name and station status
+    }
+    text(
+      stations[0].name + " " + floor(stations[0].minedValue),
+      width - 300,
+      height - 110
+    );
+    for (let j = 0; j < stations[0].ports.length; j++) {
+      text(
+        "port status:" + stations[0].ports[j].status,
+        width - 300,
+        height - j * 12 + 12 - 50
+      );
+    }
   }
   if (path) {
-    path.show();
+    // path.show();
   }
-}
-
-function newPath() {
-  // A path is a series of connected points
-  // A more sophisticated path might be a curve
-  path = new Path();
-  let offset = 200;
-  path.addPoint(offset, offset);
-  path.addPoint(width / 2, offset - offset * 0.5);
-  path.addPoint(width - offset, offset);
-
-  path.addPoint(width - offset, height - offset);
-  path.addPoint(width / 2, height - offset * 0.5);
-
-  path.addPoint(offset, height - offset);
 }

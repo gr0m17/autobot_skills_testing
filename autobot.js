@@ -7,6 +7,19 @@ function findProjection(pos, a, b) {
   v2.add(pos);
   return v2;
 }
+function findClosest(ship, targets) {
+  let closest = undefined;
+  let distance = Infinity;
+  for (let i = 0; i < targets.length; i++) {
+    let d = dist(ship.pos.x, ship.pos.y, targets[i].pos.x, targets[i].pos.y);
+    // console.log("distance:", d, " station:", targets[i].name);
+    if (d < distance) {
+      closest = targets[i];
+      distance = d;
+    }
+  }
+  return closest;
+}
 function getNormalPoint(p, a, b) {
   // Vector from a to p
   let ap = p5.Vector.sub(p, a);
@@ -22,13 +35,25 @@ class Drone {
   constructor(x, y) {
     this.name = "Drone" + floor(random(0, 100));
     this.status = "idle";
+    this.miningRate = 0.1429;
     this.color = [random(255), random(255), random(255)];
+    this.sensorColor = [...this.color, 30];
     this.maxspeed = 4;
     this.maxforce = 0.4;
     this.debug = false;
-    this.drawLines = false;
+    this.drawLines = true;
     this.r = 10;
+    this.minedValue = 0;
+    this.minedCapacity = 49.91;
+    this.unloading = false;
+    //
+    //
+    this.dockingStatus = "ready";
+    this.dockingStation = undefined;
+    this.dockingPort = undefined;
 
+    //
+    //
     //targeting priority
     this.priority = "Closest";
     // this.priority = "Most Valuable";
@@ -41,6 +66,8 @@ class Drone {
     //for drawLines
     this.currentPath = [];
     this.paths = [this.currentPath];
+    this.pathLength = 50;
+    this.lineFrameLimiter = 1;
     //sensorManagement
     this.sensors = [];
     this.activeSensor = -1;
@@ -57,12 +84,41 @@ class Drone {
   //
   //
   //
+  unload(ship) {
+    // console.log("unloading");
+    ship.dockingStation.minedValue += ship.minedValue;
+    ship.minedValue = 0;
+    ship.unloading = false;
+    this.dockingStatus = "ready";
+
+    ship.dockingStation.dockingComplete(ship, ship.dockingPort);
+  }
 
   droneManagement(targets, traffic) {
     let ship = this;
     let followForce = createVector(0, 0);
+    if (ship.status == "docked") {
+      //
+      let dockPosition = ship.dockingStation.ports[ship.dockingPort].pos.copy();
+      let stationPosition = ship.dockingStation.pos.copy();
+
+      this.angle += 0.001;
+      rotate(this.angle);
+      ship.pos.position = dockPosition;
+      // console.log("docked!");
+      if (ship.unloading == false) {
+        if (
+          ship.dockingStation.minedCapacity > ship.dockingStation.minedValue
+        ) {
+          ship.unloading = true;
+          setTimeout(function () {
+            ship.unload(ship);
+          }, 15000);
+        }
+      }
+    }
     //draw the ship
-    ship.show();
+
     //update the ships position
     ship.update();
     //manage edge collisions for some reason
@@ -79,9 +135,10 @@ class Drone {
               ship.sensors[i].bufferDuration
             );
           }
-
-          ship.sensors[i].show();
-          ship.status = "scanning";
+          if (ship.status != "docked") {
+            ship.sensors[i].show();
+            ship.status = "scanning";
+          }
         }
       }
     }
@@ -102,7 +159,7 @@ class Drone {
         }
       }
       if (nearestTarget == undefined) {
-        console.log("no target found");
+        // console.log("no target found");
         ship.currentTarget = undefined;
         ship.currentTargetValue = 0;
       } else {
@@ -128,7 +185,7 @@ class Drone {
         }
       }
       if (highValueTarget == undefined) {
-        console.log("no target found");
+        // console.log("no target found");
         ship.currentTarget = undefined;
         ship.currentTargetValue = 0;
       } else {
@@ -144,71 +201,213 @@ class Drone {
     //decision making area
 
     let bufferCollector = [];
-    for (let i = 0; i < ship.sensors.length; i++) {
-      ship.currentTarget = "No Target";
-      ship.status = "No Target";
-      if (ship.sensors[i].buffer.length > 0) {
-        // console.log(ship.sensors[i].buffer[0]);
-        ship.status = "approaching target";
+    ship.currentTarget = "No Target";
+    ship.status = "No Target";
 
-        bufferCollector = [...bufferCollector, ...ship.sensors[i].buffer];
-        //filter the bufferCollector to remove any targets with a distnance greater than the sensor's range
-        // console.log(bufferCollector);
-        for (let j = 0; j < bufferCollector.length; j++) {
-          if (bufferCollector[j].pos && ship.pos) {
-            if (
-              dist(
-                ship.pos.x,
-                ship.pos.y,
-                bufferCollector[j].pos.x,
-                bufferCollector[j].pos.y
-              ) > ship.sensors[i].range
-            ) {
-              bufferCollector.splice(j, 1);
+    if (ship.status != "atCapacity") {
+      if (ship.minedValue >= ship.minedCapacity) {
+        ship.status = "atCapacity";
+      }
+    }
+    if (ship.status != "atCapacity") {
+      for (let i = 0; i < ship.sensors.length; i++) {
+        if (ship.sensors[i].buffer.length > 0) {
+          // console.log(ship.sensors[i].buffer[0]);
+
+          bufferCollector = [...bufferCollector, ...ship.sensors[i].buffer];
+          //filter the bufferCollector to remove any targets with a distnance greater than the sensor's range
+          // console.log(bufferCollector);
+          for (let j = 0; j < bufferCollector.length; j++) {
+            if (bufferCollector[j].pos && ship.pos) {
+              if (
+                dist(
+                  ship.pos.x,
+                  ship.pos.y,
+                  bufferCollector[j].pos.x,
+                  bufferCollector[j].pos.y
+                ) > ship.sensors[i].range
+              ) {
+                bufferCollector.splice(j, 1);
+              }
             }
-          }
-        } // console.log(bufferCollector);
+          } // console.log(bufferCollector);
+        }
       }
-    }
-    if (bufferCollector.length > 0) {
-      // console.log(bufferCollector);
-      if (ship.priority == "Closest") {
-        followForce.add(ship.seek(closestTarget(bufferCollector)));
-      }
-      if (ship.priority == "Most Valuable") {
-        followForce.add(ship.seek(highestValueTarget(bufferCollector)));
-      }
-    }
-    // console.log(bufferCollector);
-    if (ship.status != "approaching target") {
-      if (path) {
-        ship.status = "following patrol path";
+      if (bufferCollector.length > 0) {
+        // console.log(bufferCollector);
+        if (ship.priority == "Closest") {
+          ship.status = "approaching target";
 
-        followForce.add(ship.followPath(path));
-      } else {
-        ship.status = "wandering";
-        followForce.add(ship.wander());
+          followForce.add(ship.consume(closestTarget(bufferCollector)));
+          closestTarget(bufferCollector).showTargeted();
+          // closestTarget(bufferCollector).show();
+        }
+        if (ship.priority == "Most Valuable") {
+          ship.status = "approaching target";
+          followForce.add(ship.consume(highestValueTarget(bufferCollector)));
+        }
       }
-      //seperate from traffic
-      if (traffic.length > 0) {
-        followForce.add(ship.separate(traffic, ship.r * 10).mult(2));
+      // console.log(bufferCollector);
+      if (ship.status == "consuming") {
+        if (traffic.length > 0) {
+          followForce.add(ship.separate(traffic, ship.r * 2).mult(4));
+        }
+      }
+      if (
+        ship.status != "approaching target" &&
+        ship.status != "consuming" &&
+        ship.status != "atCapacity"
+      ) {
+        if (patrolPath) {
+          ship.status = "following patrol path";
+
+          followForce.add(ship.followPath(path));
+        } else {
+          ship.status = "wandering";
+          followForce.add(ship.wander());
+        }
+        //seperate from traffic
+        if (traffic.length > 0) {
+          followForce.add(ship.separate(traffic, ship.r * 9).mult(4));
+        }
       }
     }
+    if (ship.status == "atCapacity") {
+      //the ship is at capacity and should request a landing port
+      if (ship.dockingStatus == "ready") {
+        ship.dockingStatus = this + " requesting docking";
+        let closestStation = findClosest(ship, stations);
+
+        ship.requestDocking(closestStation);
+        console.log(ship.name + ship.dockingStatus);
+      }
+
+      //if the ship is queued for docking, follow the ship in front of you in the queue
+      // if (ship.dockingPort == "queued") {
+      //   //find my position in the queue
+      //   let myPosition = 0;
+      //   for (let i = 0; i < ship.dockingStation.dockingQueue.length; i++) {
+      //     if (ship.dockingStation.dockingQueue[i] == ship) {
+      //       myPosition = i;
+      //     }
+      //   }
+      //   //find the ship in front of me in the queue
+      //   let nextShip = ship.dockingStation.dockingQueue[myPosition + 1];
+      //   if (nextShip) {
+      //     followForce.add(ship.follow(nextShip));
+      //   } else {
+      //     //follow a position ship.dockingStation.pos.x + ship.dockingStation.r, ship.dockingStation.pos.y + ship.dockingStation.r
+      //     //make a vector ship.dockingStation.r * 4 + ship.dockingStation.pos
+      //     target.pos = createVector(
+      //       ship.dockingStation.pos.x + ship.dockingStation.r * 5,
+      //       ship.dockingStation.pos.y + ship.dockingStation.r * 5
+      //     );
+      //     circle(target.x, target.y, ship.dockingStation.r * 5);
+      //     let traffic = [
+      //       ...ship.dockingStation.dockingQueue,
+      //       ship.dockingStation,
+      //     ];
+      //     followForce.add(ship.separate(traffic));
+      //     parkingPattern(ship.dockingStation);
+      //     followForce.add(ship.followPath(path));
+      //   }
+      // } // follow circle around docking station
+      if (ship.dockingPort == "queued") {
+        let traffic = [
+          ...ship.dockingStation.dockingQueue,
+          ship.dockingStation,
+        ];
+        followForce.add(ship.separate(traffic));
+        // parkingPattern(ship.dockingStation);
+        followForce.add(ship.followPath(path));
+      }
+
+      //if ship.dockingPort is a number, it means the ship is cleared to dock
+      //so do it!
+      if (ship.dockingPort != undefined && ship.dockingPort != "queued") {
+        let dockPosition =
+          ship.dockingStation.ports[ship.dockingPort].pos.copy();
+        let stationPosition = ship.dockingStation.pos.copy();
+
+        dockPosition.add(stationPosition);
+        followForce.add(ship.arrive(stationPosition, 20));
+        //if the ship is at the dock position, dock
+        if (
+          dist(ship.pos.x, ship.pos.y, stationPosition.x, stationPosition.y) <
+          ship.r * 2
+        ) {
+          ship.dock();
+        }
+      }
+    }
+
     //draw a line from ship to followForce
     // console.log(followForce);
-    line(
-      ship.pos.x,
-      ship.pos.y,
-      followForce.x * 100 + ship.pos.x,
-      followForce.y * 100 + ship.pos.y
-    );
+    // line(
+    //   ship.pos.x,
+    //   ship.pos.y,
+    //   followForce.x * 100 + ship.pos.x,
+    //   followForce.y * 100 + ship.pos.y
+    // );
+    // console.log(this.status);
     // followForce.setMag(ship.maxspeed);
     ship.applyForce(followForce);
+    ship.show();
   }
+  dock() {
+    this.status = "docked";
+    this.dockingStatus = "docked";
+    this.pos.parent = this.dockingStation.pos;
+    this.dockingStation.ports[this.dockingPort].status =
+      "docked with " + this.name;
+  }
+  requestDocking(station) {
+    console.log(this.name + "requesting docking:" + station.name);
 
+    let request = station.dockingRequest(this);
+    if (request == "queued") {
+      this.status = "queued";
+      this.dockingStatus = "queued for docking at " + station.name;
+    } else {
+      this.dockingStatus = "docking at " + station.name + " port: " + request;
+      this.status = "docking";
+    }
+    this.dockingStation = station;
+    this.dockingPort = request;
+    // console.log(this.name + "docking port: " + this.dockingPort);
+    return request;
+  }
   //
   //
   //
+  consume(target) {
+    //add a cool down on the consume ability
+
+    if (dist(this.pos.x, this.pos.y, target.pos.x, target.pos.y) > this.r * 4) {
+      return this.seek(target, false); //if not in range, move towards target
+    }
+    //if in range, consume the target
+    else {
+      this.status = "consuming";
+      //once consuming has stopped for more than 1 second, set the this.consumeCooldown == this.cooldown, then set a timer to tick down the cooldown
+
+      //draw a line from the ship to the target
+      strokeWeight(8);
+      stroke(255, 0, 0);
+      line(this.pos.x, this.pos.y, target.pos.x, target.pos.y);
+      strokeWeight(1);
+      target.value -= this.miningRate;
+      target.r -= this.miningRate;
+      this.minedValue += this.miningRate;
+      if (target.value <= 0) {
+        target.value = 0;
+        target.consumed = true;
+      }
+      return this.seek(target, true, 50); //if not in range, move towards target
+      //create a vector the exact opposite of this heading
+      // return this.seek(target, false, 5);
+    }
+  }
 
   addRadar(range = 150, scanWidthInDegrees = 5, scanSpeed = 0.15) {
     this.sensors.push(new Radar(this, range, scanWidthInDegrees, scanSpeed));
@@ -235,6 +434,10 @@ class Drone {
     this.currentPath = [];
 
     this.paths = [this.currentPath];
+  }
+  trimPath() {
+    //take off the oldest entry of this.paths
+    this.paths.shift();
   }
   wander() {
     let wanderPoint = this.vel.copy();
@@ -281,7 +484,7 @@ class Drone {
       let other = traffic[i];
       let d = p5.Vector.dist(this.pos, other.pos);
       // If the distance is greater than 0 and less than an arbitrary amount (0 when you are yourself)
-      if (d > 0 && d < desiredseparation) {
+      if (d > 0 && d < desiredseparation + other.r * 2) {
         // Calculate vector pointing away from neighbor
         let diff = p5.Vector.sub(this.pos, other.pos);
         diff.normalize();
@@ -429,10 +632,10 @@ class Drone {
   evade(target) {
     return this.pursuit(target).mult(-1);
   }
-  arrive(target) {
-    return this.seek(target, true);
+  arrive(target, r) {
+    return this.seek(target, true, r);
   }
-  seek(target, arrival = false) {
+  seek(target, arrival = false, r = this.r * 5) {
     let pos = undefined;
     if (target.pos) {
       pos = target.pos;
@@ -442,12 +645,16 @@ class Drone {
     let desired = p5.Vector.sub(pos, this.pos);
     let desiredSpeed = this.maxspeed;
     if (arrival) {
-      let r = this.r * 2;
       let d = desired.mag();
 
       if (d < r) {
-        desiredSpeed = map(d, 0, r, 0, this.maxspeed);
+        desiredSpeed = map(d, 0, r * 2, 0, this.maxspeed);
       }
+    }
+    if (desiredSpeed < 2) {
+      let heading = desired.heading();
+
+      desired = createVector(0, 0);
     }
     desired.setMag(desiredSpeed);
     desired.sub(this.vel);
@@ -459,11 +666,12 @@ class Drone {
     this.acc.add(force);
   }
   update() {
+    //remember the angle of the vehicle
     this.vel.add(this.acc);
     this.pos.add(this.vel);
     this.vel.limit(this.maxspeed);
     this.acc.mult(0);
-    if (frameCount % 10 == 0 && this.drawLines) {
+    if (frameCount % this.lineFrameLimiter == 0 && this.drawLines) {
       this.currentPath.push(this.pos.copy());
     }
   }
@@ -513,17 +721,38 @@ class Drone {
     strokeWeight(1);
     //draw a triangle
     push();
-    translate(this.pos.x, this.pos.y);
+    if (this.status == "docked") {
+      let target = this.dockingStation.pos.copy();
+      let current = this.pos.copy();
+
+      translate(this.dockingStation.pos.x, this.dockingStation.pos.y);
+      rotate(this.dockingStation.angle);
+      translate(
+        this.dockingStation.ports[this.dockingPort].pos.x,
+        this.dockingStation.ports[this.dockingPort].pos.y
+      );
+      // console.log(this.dockingStation.angle);
+    } else {
+      translate(this.pos.x, this.pos.y);
+    }
     rotate(this.vel.heading());
     triangle(-this.r, -this.r / 2, -this.r, this.r / 2, this.r, 0);
     pop();
     // console.log(this.currentPath);
+    //if this.drawLines is true, draw the path
+    //let path counter start
+    let pathCounter = 0;
     for (let path of this.paths) {
       beginShape();
       noFill();
       stroke(this.color);
       for (let p of path) {
-        vertex(p.x, p.y);
+        pathCounter++;
+        if (pathCounter > this.pathLength) {
+          path.shift();
+        } else {
+          vertex(p.x, p.y);
+        }
       }
       endShape();
     }
@@ -533,22 +762,67 @@ class Drone {
 class Target extends Drone {
   constructor(x, y) {
     super(x, y);
-    this.vel = createVector(random(6, 10), random(6, 10));
+    let m = floor(random(0, 2));
+    if (m == 0) {
+      this.vel = createVector(0, 0);
+    } else {
+      this.vel = createVector(random(-1, 1), random(-1, 1));
+    }
     this.maxspeed = 2;
     // this.r = 3;
-    this.r = random(3, 10);
+    this.consumed = false;
+    this.r = random(3, 50);
     this.debug = false;
     this.color = [random(255), random(255), random(255), 128];
     this.name = "Target" + floor(random(1000, 9999));
-    this.value = this.r / 3;
+    this.value = this.r;
+    this.killvalue = this.value;
   }
   show() {
+    push();
     noStroke();
     fill(this.color);
-    push();
     translate(this.pos.x, this.pos.y);
     circle(0, 0, this.r * 2);
     pop();
+  }
+  showTargeted() {
+    push();
+    color(this.color);
+    // stroke(0);
+    strokeWeight(1);
+    //draw a triangle
+    translate(this.pos.x, this.pos.y);
+    // rotate(this.vel.heading());
+    //draw a triangle that has even sides that enclose the circle
+    //draw a square around the circle
+    noFill();
+    rect(-this.r / 3, -this.r / 3, (this.r / 3) * 2, (this.r / 3) * 2);
+    // triangle(-this.r, -this.r / 2, -this.r, this.r / 2, this.r, 0);
+    pop();
+  }
+  update() {
+    this.vel.add(this.acc);
+    this.pos.add(this.vel);
+    this.vel.limit(this.maxspeed);
+    this.acc.mult(0);
+    this.edgesBounce();
+  }
+  edgesBounce() {
+    if (this.pos.x - this.r < 0) {
+      this.pos.x = 0 + this.r;
+      this.vel.x *= -1;
+    } else if (this.pos.x + this.r > width) {
+      this.pos.x = width - this.r;
+      this.vel.x *= -1;
+    }
+    if (this.pos.y - this.r < 0) {
+      this.pos.y = 0 + this.r;
+      this.vel.y *= -1;
+    } else if (this.pos.y + this.r > height) {
+      this.pos.y = height - this.r;
+      this.vel.y *= -1;
+    }
   }
 }
 class Probe extends Drone {
@@ -643,7 +917,7 @@ class Probe extends Drone {
         //multiply the followForce by maxspeed
       }
     }
-    if (ship.status != "approaching target") {
+    if (ship.status != "approaching target" && ship.status != "consuming") {
       if (path) {
         ship.status = "following path";
 
@@ -702,7 +976,7 @@ class Probe extends Drone {
     //if any sensors equipped, update them
     for (let sensor of this.sensors) {
       // sensor.scan(targets);
-      sensor.show();
+      // sensor.show();
     }
     //seek this.target
 
@@ -720,5 +994,203 @@ class Probe extends Drone {
     circle(0, 0, this.r * 2);
     circle(0, 0, this.r * 1);
     pop();
+  }
+}
+class Station extends Drone {
+  constructor(x, y) {
+    super(x, y);
+    this.name = "Station" + floor(random(0, 100));
+    this.r = 35;
+    this.maxspeed = 0.5;
+    this.maxforce = 0.05;
+    this.status = "idle";
+    this.sensors = [];
+    this.angle = 0;
+    this.minedCapacity = 1000000;
+    this.portSizeH = 10;
+    this.portSizeW = 20;
+    this.ports = [
+      {
+        pos: createVector(this.r / 2, 0),
+        dock: [],
+        status: "idle",
+      },
+      {
+        pos: createVector(-this.r / 2, 0),
+        dock: [],
+        status: "idle",
+      },
+      {
+        pos: createVector(this.r / 2, this.portSizeW),
+        dock: [],
+        status: "idle",
+      },
+      {
+        pos: createVector(-this.r / 2, -this.portSizeW),
+        dock: [],
+        status: "idle",
+      },
+      {
+        pos: createVector(-this.r / 2, this.portSizeW),
+        dock: [],
+        status: "idle",
+      },
+      {
+        pos: createVector(this.r / 2, -this.portSizeW),
+        dock: [],
+        status: "idle",
+      },
+    ];
+
+    this.dockingQueue = [];
+  }
+  dockingRequest(dockingShip) {
+    for (let i = 0; i < this.ports.length; i++) {
+      if (this.ports[i].dock.length < 1) {
+        this.ports[i].dock.push(dockingShip);
+        this.ports[i].status = "Waiting for " + dockingShip.name;
+        return i;
+      }
+    }
+    //if there are no empty ports, add the ship to the docking queue
+    this.dockingQueue.push(dockingShip);
+    return "queued";
+  }
+  dockingComplete(dockingShip, port) {
+    for (let i = 0; i < this.ports.length; i++) {
+      if (this.ports[i].dock.length > 0) {
+        // console.log(this.ports[i].dock[0]);
+        if (this.ports[i].dock[0] == dockingShip) {
+          // console.log("idle?:", this.ports[i].status);
+          this.ports[i].status = "idle";
+          // console.log("idle?:", this.ports[i].status);
+          this.ports[i].dock.shift();
+          //check if there are any ships in the queue
+          if (this.dockingQueue.length > 0) {
+            // console.log(this.dockingQueue);
+            let nextship = this.dockingQueue.shift();
+            // console.log("port status: " + this.ports[i].status);
+            this.ports[i].status = "queueing " + nextship.name;
+            nextship.requestDocking(this);
+
+            // this.ports[i].dock[0].dockingPort = i;
+          } else {
+            this.ports[i].status = "idle";
+          }
+          return i;
+        }
+      }
+    }
+  }
+  show() {
+    noStroke();
+    // console.log("target:", this.target);
+    push();
+    translate(this.pos.x, this.pos.y);
+    rectMode(CENTER);
+    this.angle += 0.005;
+    rotate(this.angle);
+    // circle(0, 0, this.r * 5);
+    fill(255, 255, 50, 255);
+    square(0, 0, this.r * 2);
+    fill(255, 0, 50, 100);
+    circle(0, 0, this.r * 2);
+    circle(0, 0, this.r * 1);
+
+    if (this.ports) {
+      for (let i = 0; i < this.ports.length; i++) {
+        fill(100, 50, 255, 255);
+        rect(
+          this.ports[i].pos.x,
+          this.ports[i].pos.y,
+          this.portSizeW,
+          this.portSizeH
+        );
+      }
+    }
+    pop();
+  }
+  showTop() {
+    noStroke();
+    // console.log("target:", this.target);
+    push();
+    translate(this.pos.x, this.pos.y);
+    fill(255, 20, 255, 255);
+    text(this.name, 40, 40);
+    text("stored minerals:" + this.minedValue.toFixed(2), 40, 52);
+    rectMode(CENTER);
+    rotate(this.angle);
+    // circle(0, 0, this.r * 5);
+    // fill(255, 255, 255, 100);
+    // square(0, 0, this.r * 2);
+    fill(255, 0, 50, 100);
+    //
+    if (this.ports) {
+      for (let i = 0; i < this.ports.length; i++) {
+        let fillColor = [100, 100, 200, 100];
+        if (this.ports[i].dock[0]) {
+          fillColor = [...this.ports[i].dock[0].color, 200];
+          fill(fillColor);
+        }
+        rect(
+          this.ports[i].pos.x - this.r / 8,
+          this.ports[i].pos.y,
+          this.portSizeW * 0.5,
+          this.portSizeH * 1.5
+        );
+      }
+    }
+    pop();
+  }
+}
+function bufferManagement(autobots, targets) {
+  for (let i = 0; i < autobots.length; i++) {
+    for (let j = 0; j < targets.length; j++) {
+      if (targets[j].consumed == true) {
+        let killvalue = floor(target.killvalue);
+        deletionList.push(targets[j].name);
+        autobots[i].kills += killvalue;
+      }
+    }
+  }
+
+  let uniqueDeletionList = [];
+  for (let i = 0; i < deletionList.length; i++) {
+    if (!uniqueDeletionList.includes(deletionList[i])) {
+      uniqueDeletionList.push(deletionList[i]);
+    }
+    deletionList = [];
+  }
+  // console.log(uniqueDeletionList);
+  //check all the sensor buffers for targets with the names in uniqueDeletionList
+  for (let i = 0; i < autobots.length; i++) {
+    for (let j = 0; j < autobots[i].sensors.length; j++) {
+      for (let k = 0; k < autobots[i].sensors[j].buffer.length; k++) {
+        if (
+          uniqueDeletionList.includes(autobots[i].sensors[j].buffer[k].name)
+        ) {
+          autobots[i].sensors[j].buffer.splice(k, 1);
+        }
+        if (!targets.includes(autobots[i].sensors[j].buffer[k])) {
+          autobots[i].sensors[j].buffer.splice(k, 1);
+        }
+      }
+    }
+  }
+  // console.log("scan for targets in probes");
+  for (let i = 0; i < probes.length; i++) {
+    for (let j = 0; j < probes[i].sensors.length; j++) {
+      for (let k = 0; k < probes[i].sensors[j].buffer.length; k++) {
+        if (uniqueDeletionList.includes(probes[i].sensors[j].buffer[k].name)) {
+          probes[i].sensors[j].buffer.splice(k, 1);
+        }
+      }
+    }
+  }
+  //remove targets from the targets array whose name is in uniqueDeletionList
+  for (let j = 0; j < targets.length; j++) {
+    if (uniqueDeletionList.includes(targets[j].name)) {
+      targets.splice(j, 1);
+    }
   }
 }

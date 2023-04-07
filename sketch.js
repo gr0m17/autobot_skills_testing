@@ -16,6 +16,7 @@ function setup() {
   createCanvas(windowWidth - 20, windowHeight - 20);
   if (width < 500 || height < 500) {
     numberOfTargets = 25;
+    armySize = 12;
   }
   // createCanvas();
 

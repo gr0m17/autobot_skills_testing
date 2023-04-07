@@ -4,7 +4,7 @@ let targets = []; //array to hold all the targets
 let shipPriority = "Closest"; //or "Highest Value"
 let stations = []; //array to hold all the stations
 // let allTargets = [];
-let numberOfTargets = 100;
+let numberOfTargets = 75;
 let armySize = 24;
 let path;
 let patrolPath;
@@ -14,6 +14,9 @@ let deletionList = [];
 function setup() {
   //create canvas 20 pixels smaller than the window
   createCanvas(windowWidth - 20, windowHeight - 20);
+  if (width < 500 || height < 500) {
+    numberOfTargets = 25;
+  }
   // createCanvas();
 
   //make the stations, if they are here
